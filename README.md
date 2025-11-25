@@ -1,6 +1,6 @@
 # CRUD Application - React + FastAPI + DynamoDB
 
-<!-- A production-ready full-stack CRUD application with automated AWS deployment using Terraform and GitHub Actions. -->
+A production-ready full-stack CRUD application with automated AWS deployment using Terraform and GitHub Actions.
 
 **Repository:** https://github.com/YogeshAbnave/terraform-crud
 
