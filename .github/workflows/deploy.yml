@@ -47,10 +47,16 @@ jobs:
           echo "🔍 Checking AWS infrastructure..."
           
           # Check if ALB exists
-          ALB_EXISTS=$(aws elbv2 describe-load-balancers --names crud-app-alb --query 'LoadBalancers[0].LoadBalancerName' --output text 2>/dev/null || echo "false")
+          ALB_EXISTS=$(aws elbv2 describe-load-balancers \
+            --names crud-app-alb \
+            --query 'LoadBalancers[0].LoadBalancerName' \
+            --output text 2>/dev/null || echo "false")
           
           # Check if ASG exists
-          ASG_EXISTS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names crud-app-asg --query 'AutoScalingGroups[0].AutoScalingGroupName' --output text 2>/dev/null || echo "false")
+          ASG_EXISTS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names crud-app-asg \
+            --query 'AutoScalingGroups[0].AutoScalingGroupName' \
+            --output text 2>/dev/null || echo "false")
           
           if [ "$ALB_EXISTS" = "false" ] || [ "$ALB_EXISTS" = "None" ]; then
             echo "alb_exists=false" >> $GITHUB_OUTPUT
@@ -149,105 +155,105 @@ jobs:
             # Upload application files
             echo "📤 Uploading application files..."
             scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -r ./src/* ubuntu@$IP:/var/www/streamlit/
-
+            
             # Execute deployment on remote instance
             ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$IP << 'REMOTE_EOF'
-set -e
-cd /var/www/streamlit
-
-echo "🐍 Setting up Python environment..."
-sudo apt-get update > /dev/null 2>&1
-sudo apt-get install -y python3-pip python3-venv nginx > /dev/null 2>&1
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip --quiet
-if [ -f requirements.txt ]; then
-  pip install -r requirements.txt --quiet
-else
-  pip install streamlit boto3 pymongo pillow --quiet
-fi
-
-# Create systemd service file
-echo "🔧 Creating systemd service..."
-sudo tee /etc/systemd/system/streamlit.service > /dev/null << 'SERVICE_EOF'
-[Unit]
-Description=Streamlit Education Portal
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/var/www/streamlit
-Environment=PATH=/var/www/streamlit/venv/bin
-Environment=MONGO_URI=mongodb://localhost:27017/
-Environment=AWS_REGION=ap-south-1
-ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-SERVICE_EOF
-
-# Setup NGINX
-echo "🌐 Configuring NGINX..."
-sudo tee /etc/nginx/sites-available/default > /dev/null << 'NGINX_EOF'
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    location / {
-        proxy_pass http://localhost:8501;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $server_name;
-        proxy_read_timeout 86400;
-    }
-}
-NGINX_EOF
-
-# Enable and start services
-echo "🔄 Starting services..."
-sudo systemctl daemon-reload
-sudo systemctl enable streamlit
-sudo systemctl restart streamlit
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-
-# Wait for service to start
-sleep 5
-
-# Check service status
-if sudo systemctl is-active --quiet streamlit; then
-  echo "✅ Streamlit service is running"
-else
-  echo "❌ Streamlit service failed to start"
-  sudo systemctl status streamlit
-  exit 1
-fi
-
-if sudo systemctl is-active --quiet nginx; then
-  echo "✅ NGINX service is running"
-else
-  echo "❌ NGINX service failed to start"
-  sudo systemctl status nginx
-  exit 1
-fi
-
-echo "✅ Deployment completed successfully"
-REMOTE_EOF
-
+          set -e
+          cd /var/www/streamlit
+          
+          echo "🐍 Setting up Python environment..."
+          sudo apt-get update > /dev/null 2>&1
+          sudo apt-get install -y python3-pip python3-venv nginx > /dev/null 2>&1
+          
+          # Create virtual environment
+          python3 -m venv venv
+          source venv/bin/activate
+          
+          # Install dependencies
+          pip install --upgrade pip --quiet
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt --quiet
+          else
+            pip install streamlit boto3 pymongo pillow --quiet
+          fi
+          
+          # Create systemd service file
+          echo "🔧 Creating systemd service..."
+          sudo tee /etc/systemd/system/streamlit.service > /dev/null << 'SERVICE_EOF'
+          [Unit]
+          Description=Streamlit Education Portal
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/var/www/streamlit
+          Environment=PATH=/var/www/streamlit/venv/bin
+          Environment=MONGO_URI=mongodb://localhost:27017/
+          Environment=AWS_REGION=ap-south-1
+          ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0
+          Restart=always
+          RestartSec=10
+          
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE_EOF
+          
+          # Setup NGINX
+          echo "🌐 Configuring NGINX..."
+          sudo tee /etc/nginx/sites-available/default > /dev/null << 'NGINX_EOF'
+          server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            server_name _;
+            
+            location / {
+              proxy_pass http://localhost:8501;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_set_header Host $host;
+              proxy_cache_bypass $http_upgrade;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header X-Forwarded-Host $server_name;
+              proxy_read_timeout 86400;
+            }
+          }
+          NGINX_EOF
+          
+          # Enable and start services
+          echo "🔄 Starting services..."
+          sudo systemctl daemon-reload
+          sudo systemctl enable streamlit
+          sudo systemctl restart streamlit
+          sudo systemctl enable nginx
+          sudo systemctl restart nginx
+          
+          # Wait for service to start
+          sleep 5
+          
+          # Check service status
+          if sudo systemctl is-active --quiet streamlit; then
+            echo "✅ Streamlit service is running"
+          else
+            echo "❌ Streamlit service failed to start"
+            sudo systemctl status streamlit
+            exit 1
+          fi
+          
+          if sudo systemctl is-active --quiet nginx; then
+            echo "✅ NGINX service is running"
+          else
+            echo "❌ NGINX service failed to start"
+            sudo systemctl status nginx
+            exit 1
+          fi
+          
+          echo "✅ Deployment completed successfully"
+          REMOTE_EOF
+            
             echo "✅ Successfully deployed to $IP"
             echo ""
           done
@@ -300,6 +306,7 @@ REMOTE_EOF
         if: steps.get-alb-dns.outputs.alb_dns
         run: |
           echo "⏳ Waiting for ALB targets to become healthy..."
+          
           TG_ARN=$(aws elbv2 describe-target-groups \
             --names crud-app-tg \
             --query 'TargetGroups[0].TargetGroupArn' \
