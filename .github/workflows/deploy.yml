@@ -175,28 +175,28 @@ jobs:
             
             # Setup Streamlit environment and start service
             echo "🔧 Setting up Streamlit environment..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$IP << 'ENDSSH'
-          set -e
-          cd /var/www/streamlit
-          
-          # Create virtual environment if it doesn't exist
-          if [ ! -d "venv" ]; then
-            python3 -m venv venv
-          fi
-          
-          # Install dependencies
-          source venv/bin/activate
-          pip install --upgrade pip --quiet
-          
-          # Install required packages
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt --quiet
-          else
-            pip install streamlit boto3 pymongo pillow --quiet
-          fi
-          
-          # Create or update systemd service for Streamlit
-          sudo tee /etc/systemd/system/streamlit.service > /dev/null << 'EOF'
+            ssh -i ~/.ssh/id_rsa ubuntu@$IP 'bash -s' << 'ENDSSH'
+              set -e
+              cd /var/www/streamlit
+              
+              # Create virtual environment if it doesn't exist
+              if [ ! -d "venv" ]; then
+                python3 -m venv venv
+              fi
+              
+              # Install dependencies
+              source venv/bin/activate
+              pip install --upgrade pip --quiet
+              
+              # Install required packages
+              if [ -f requirements.txt ]; then
+                pip install -r requirements.txt --quiet
+              else
+                pip install streamlit boto3 pymongo pillow --quiet
+              fi
+              
+              # Create systemd service for Streamlit
+              sudo bash -c 'cat > /etc/systemd/system/streamlit.service' << 'SERVICEEOF'
 [Unit]
 Description=Streamlit Education Portal
 After=network.target
@@ -214,30 +214,30 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-EOF
-          
-          # Reload systemd and start service
-          sudo systemctl daemon-reload
-          sudo systemctl enable streamlit
-          sudo systemctl restart streamlit
-          
-          # Wait a moment for service to start
-          sleep 3
-          
-          # Check if service is running
-          if sudo systemctl is-active --quiet streamlit; then
-            echo "✅ Streamlit service is running"
-          else
-            echo "⚠️ Streamlit service failed to start"
-            sudo systemctl status streamlit --no-pager || true
-          fi
-          ENDSSH
+SERVICEEOF
+              
+              # Reload systemd and start service
+              sudo systemctl daemon-reload
+              sudo systemctl enable streamlit
+              sudo systemctl restart streamlit
+              
+              # Wait a moment for service to start
+              sleep 3
+              
+              # Check if service is running
+              if sudo systemctl is-active --quiet streamlit; then
+                echo "✅ Streamlit service is running"
+              else
+                echo "⚠️ Streamlit service failed to start"
+                sudo systemctl status streamlit --no-pager || true
+              fi
+ENDSSH
             
             # Configure NGINX for Streamlit
             echo "🔄 Configuring NGINX for Streamlit..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$IP << 'ENDSSH'
-          # Create NGINX config for Streamlit
-          sudo tee /etc/nginx/sites-available/default > /dev/null << 'EOF'
+            ssh -i ~/.ssh/id_rsa ubuntu@$IP 'bash -s' << 'ENDSSH'
+              # Create NGINX config for Streamlit
+              sudo bash -c 'cat > /etc/nginx/sites-available/default' << 'NGINXEOF'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -248,32 +248,30 @@ server {
         proxy_pass http://localhost:8501;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support for Streamlit
         proxy_set_header X-Forwarded-Host $server_name;
         proxy_read_timeout 86400;
     }
 }
-EOF
-          
-          # Test and restart NGINX
-          sudo nginx -t
-          sudo systemctl restart nginx
-          
-          # Check if NGINX is running
-          if sudo systemctl is-active --quiet nginx; then
-            echo "✅ NGINX service is running"
-          else
-            echo "⚠️ NGINX service failed to start"
-            sudo systemctl status nginx --no-pager || true
-          fi
-          ENDSSH
+NGINXEOF
+              
+              # Test and restart NGINX
+              sudo nginx -t
+              sudo systemctl restart nginx
+              
+              # Check if NGINX is running
+              if sudo systemctl is-active --quiet nginx; then
+                echo "✅ NGINX service is running"
+              else
+                echo "⚠️ NGINX service failed to start"
+                sudo systemctl status nginx --no-pager || true
+              fi
+ENDSSH
             
             echo "✅ Deployment to $IP completed"
             echo ""
