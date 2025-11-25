@@ -45,24 +45,71 @@ if "question_answers" not in st.session_state:
 
 def parse_text_to_lines(text):
     """Parse JSON-like text from model into Python object"""
-    text = text.replace("```json\n", "").replace("\n```", "")
-    return json.loads(text)
+    # Remove markdown code blocks and extra whitespace
+    text = text.replace("```json", "").replace("```", "").strip()
+    
+    # Remove any text before the first [ and after the last ]
+    start_idx = text.find('[')
+    end_idx = text.rfind(']')
+    
+    if start_idx != -1 and end_idx != -1:
+        text = text[start_idx:end_idx + 1]
+    else:
+        st.error("No JSON array found in response")
+        st.text_area("Raw response for debugging:", text, height=200)
+        return []
+    
+    try:
+        parsed = json.loads(text)
+        
+        # Validate the structure
+        if not isinstance(parsed, list):
+            st.error("Response is not a JSON array")
+            return []
+        
+        # Validate each item has required fields
+        for item in parsed:
+            if not all(key in item for key in ["Id", "Question", "Answer"]):
+                st.warning(f"Item missing required fields: {item}")
+        
+        return parsed
+    except json.JSONDecodeError as e:
+        st.error(f"Failed to parse JSON response: {e}")
+        st.text_area("Raw response for debugging:", text, height=200)
+        
+        # Show helpful error message
+        st.info("💡 Tip: The AI model may need to be configured properly. Check the Bedrock setup guide in docs/BEDROCK-SETUP.md")
+        return []
 
 
 def query_generate_questions_answers_endpoint(input_text):
     """Call Bedrock text model to generate Q&A"""
-    prompt = f"""{input_text}
+    prompt = f"""Based on the following context, generate exactly 10 questions and answers for students.
 
-Using the above context, please generate ten questions and answers you could ask students about this information.
-Format the output as a JSON array with objects containing "Id", "Question", and "Answer" keys.
+Context:
+{input_text}
 
-Example format:
+IMPORTANT: Return ONLY a valid JSON array. Do not include any explanatory text before or after the JSON.
+
+Required format (return ONLY this, nothing else):
 [
-  {{"Id": 1, "Question": "What is...", "Answer": "..."}},
-  {{"Id": 2, "Question": "How does...", "Answer": "..."}}
+  {{"Id": 1, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 2, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 3, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 4, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 5, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 6, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 7, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 8, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 9, "Question": "Your question here?", "Answer": "Your answer here"}},
+  {{"Id": 10, "Question": "Your question here?", "Answer": "Your answer here"}}
 ]
 
-Make sure each question is based on the provided context, and the answers are clear and correct."""
+Rules:
+- Each question must be based on the provided context
+- Each answer must be clear and correct
+- Use proper JSON formatting with double quotes
+- Return ONLY the JSON array, no additional text"""
     
     # Support different model formats
     if "anthropic.claude" in text_model_id:
@@ -100,18 +147,26 @@ Make sure each question is based on the provided context, and the answers are cl
         st.error(f"Can't invoke model {text_model_id}. Reason: {e}")
         return []
 
-    response_body = json.loads(qa_response.get("body").read().decode())
-    
-    # Parse response based on model type
-    if "anthropic.claude" in text_model_id:
-        response_text = response_body["content"][0]["text"]
-    elif "amazon.titan-text" in text_model_id:
-        response_text = response_body["results"][0]["outputText"]
-    else:
-        # Nova format
-        response_text = response_body["output"]["message"]["content"][0]["text"]
-    
-    return parse_text_to_lines(response_text)
+    try:
+        response_body = json.loads(qa_response.get("body").read().decode())
+        
+        # Parse response based on model type
+        if "anthropic.claude" in text_model_id:
+            response_text = response_body["content"][0]["text"]
+        elif "amazon.titan-text" in text_model_id:
+            response_text = response_body["results"][0]["outputText"]
+        else:
+            # Nova format
+            response_text = response_body["output"]["message"]["content"][0]["text"]
+        
+        # Log the raw response for debugging
+        logger.info(f"Model response (first 500 chars): {response_text[:500]}")
+        
+        return parse_text_to_lines(response_text)
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        st.error(f"Error parsing model response: {e}")
+        st.text_area("Raw response body:", str(response_body), height=200)
+        return []
 
 
 def query_generate_image_endpoint(input_text):
