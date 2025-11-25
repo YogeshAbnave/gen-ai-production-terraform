@@ -8,6 +8,8 @@ on:
 
 env:
   AWS_REGION: ap-south-1
+  APPLICATION_NAME: streamlit-crud-app
+  STREAMLIT_PORT: 8501
 
 jobs:
   deploy:
@@ -29,122 +31,93 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Streamlit application dependencies
+      - name: Install dependencies
         working-directory: ./src
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            echo "⚠️ No requirements.txt found in src/"
             pip install streamlit boto3 pymongo pillow
           fi
 
-      - name: Check infrastructure status
+      - name: Validate infrastructure
         id: check-infra
-        continue-on-error: true
         run: |
           echo "🔍 Checking AWS infrastructure..."
           
           # Check if ALB exists
-          ALB_EXISTS=$(aws elbv2 describe-load-balancers --names crud-app-alb --query 'LoadBalancers[0].LoadBalancerName' --output text 2>/dev/null || echo "")
+          ALB_EXISTS=$(aws elbv2 describe-load-balancers --names crud-app-alb --query 'LoadBalancers[0].LoadBalancerName' --output text 2>/dev/null || echo "false")
           
           # Check if ASG exists
-          ASG_EXISTS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names crud-app-asg --query 'AutoScalingGroups[0].AutoScalingGroupName' --output text 2>/dev/null || echo "")
+          ASG_EXISTS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names crud-app-asg --query 'AutoScalingGroups[0].AutoScalingGroupName' --output text 2>/dev/null || echo "false")
           
-          if [ -z "$ALB_EXISTS" ] || [ "$ALB_EXISTS" == "None" ]; then
-            echo "⚠️ WARNING: ALB 'crud-app-alb' not found"
+          if [ "$ALB_EXISTS" = "false" ] || [ "$ALB_EXISTS" = "None" ]; then
             echo "alb_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ ALB 'crud-app-alb' not found"
           else
-            echo "✅ ALB found: $ALB_EXISTS"
             echo "alb_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ ALB found: $ALB_EXISTS"
           fi
           
-          if [ -z "$ASG_EXISTS" ] || [ "$ASG_EXISTS" == "None" ]; then
-            echo "⚠️ WARNING: ASG 'crud-app-asg' not found"
+          if [ "$ASG_EXISTS" = "false" ] || [ "$ASG_EXISTS" = "None" ]; then
             echo "asg_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ ASG 'crud-app-asg' not found"
           else
-            echo "✅ ASG found: $ASG_EXISTS"
             echo "asg_exists=true" >> $GITHUB_OUTPUT
-          fi
-          
-          if [ "${{ steps.check-infra.outputs.alb_exists }}" != "true" ] || [ "${{ steps.check-infra.outputs.asg_exists }}" != "true" ]; then
-            echo ""
-            echo "⚠️ Infrastructure incomplete. Deploy Terraform first:"
-            echo "  cd terraform-crud/infrastructure && terraform apply"
+            echo "✅ ASG found: $ASG_EXISTS"
           fi
 
       - name: Get ASG instance IPs
         id: get-instances
-        continue-on-error: true
+        if: steps.check-infra.outputs.asg_exists == 'true'
         run: |
-          # Get instance IPs as JSON array
+          echo "📦 Getting instance IPs from ASG..."
+          
+          # Get instance IPs
           INSTANCE_IPS_JSON=$(aws ec2 describe-instances \
             --filters "Name=tag:aws:autoscaling:groupName,Values=crud-app-asg" \
                       "Name=instance-state-name,Values=running" \
             --query 'Reservations[*].Instances[*].PublicIpAddress' \
             --output json 2>/dev/null || echo "[]")
           
-          # Flatten the nested array and convert to space-separated string
-          INSTANCE_IPS=$(echo "$INSTANCE_IPS_JSON" | jq -r 'flatten | join(" ")')
+          echo "Raw instance data: $INSTANCE_IPS_JSON"
           
-          if [ -z "$INSTANCE_IPS" ] || [ "$INSTANCE_IPS" == "null" ] || [ "$INSTANCE_IPS" == "" ]; then
-            echo "❌ ERROR: No running instances found in ASG 'crud-app-asg'"
-            echo ""
-            echo "🔧 REQUIRED: Deploy Terraform infrastructure first!"
-            echo ""
-            echo "Run these commands:"
-            echo "  cd terraform-crud/infrastructure"
-            echo "  terraform init"
-            echo "  terraform apply"
-            echo ""
-            echo "Or use the deployment script:"
-            echo "  .\deploy.ps1 -Deploy"
-            echo ""
+          # Process JSON to get IPs
+          INSTANCE_IPS=$(echo "$INSTANCE_IPS_JSON" | jq -r 'flatten | .[]' | tr '\n' ' ' | sed 's/ *$//')
+          
+          if [ -z "$INSTANCE_IPS" ] || [ "$INSTANCE_IPS" = "null" ]; then
+            echo "❌ No running instances found in ASG"
             echo "instances_found=false" >> $GITHUB_OUTPUT
             exit 1
+          else
+            echo "instances=$INSTANCE_IPS" >> $GITHUB_OUTPUT
+            echo "instances_found=true" >> $GITHUB_OUTPUT
+            echo "✅ Found instances: $INSTANCE_IPS"
           fi
-          
-          # Save as simple string (space-separated)
-          echo "instances=$INSTANCE_IPS" >> $GITHUB_OUTPUT
-          echo "instances_found=true" >> $GITHUB_OUTPUT
-          echo "✅ Found instances: $INSTANCE_IPS"
 
-      - name: Infrastructure check failed
-        if: failure() && steps.get-instances.outcome == 'failure'
+      - name: Infrastructure setup required
+        if: steps.check-infra.outputs.asg_exists != 'true' || steps.get-instances.outcome == 'failure'
         run: |
-          echo "### ⚠️ Deployment Failed - Infrastructure Not Found" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Infrastructure Setup Required" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The AWS infrastructure (ASG, ALB, EC2) has not been deployed yet." >> $GITHUB_STEP_SUMMARY
+          echo "The AWS infrastructure needs to be deployed before application deployment." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 🔧 Required Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "**Required Steps:**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 1. Deploy Terraform Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo '```powershell' >> $GITHUB_STEP_SUMMARY
+          echo "1. **Deploy Terraform Infrastructure**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "cd terraform-crud/infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "terraform init" >> $GITHUB_STEP_SUMMARY
           echo "terraform apply" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Or use the deployment script:" >> $GITHUB_STEP_SUMMARY
-          echo '```powershell' >> $GITHUB_STEP_SUMMARY
-          echo ".\deploy.ps1 -Deploy" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 2. Configure GitHub Secrets" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "After Terraform completes, add these secrets to your repository:" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Configure GitHub Secrets**" >> $GITHUB_STEP_SUMMARY
           echo "- \`AWS_ACCESS_KEY_ID\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`AWS_SECRET_ACCESS_KEY\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`EC2_PRIVATE_KEY\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 3. Re-run This Workflow" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Once infrastructure is deployed, re-run this workflow or push again." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 📚 Documentation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See [DEPLOYMENT-ORDER.md](../blob/main/DEPLOYMENT-ORDER.md) for detailed instructions." >> $GITHUB_STEP_SUMMARY
+          echo "3. **Re-run This Workflow**" >> $GITHUB_STEP_SUMMARY
           exit 1
 
       - name: Setup SSH key
@@ -153,50 +126,64 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy to all ASG instances
+      - name: Deploy to ASG instances
         if: steps.get-instances.outputs.instances_found == 'true'
         run: |
-          # Convert space-separated IPs to array
+          set -e
           IPS="${{ steps.get-instances.outputs.instances }}"
           
           for IP in $IPS; do
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "📦 Deploying Streamlit app to instance: $IP"
+            echo "🚀 Deploying to instance: $IP"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
             # Add to known hosts
-            ssh-keyscan -H $IP >> ~/.ssh/known_hosts 2>/dev/null
+            ssh-keyscan -H $IP >> ~/.ssh/known_hosts 2>/dev/null || true
             
-            # Deploy Streamlit application
-            echo "📤 Uploading Streamlit application..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$IP "sudo mkdir -p /var/www/streamlit && sudo chown -R ubuntu:ubuntu /var/www/streamlit"
-            scp -i ~/.ssh/id_rsa -r src/* ubuntu@$IP:/var/www/streamlit/
-            
-            # Setup Streamlit environment and start service
-            echo "🔧 Setting up Streamlit environment..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$IP 'bash -s' << 'ENDSSH'
-              set -e
-              cd /var/www/streamlit
-              
-              # Create virtual environment if it doesn't exist
-              if [ ! -d "venv" ]; then
-                python3 -m venv venv
-              fi
-              
-              # Install dependencies
-              source venv/bin/activate
-              pip install --upgrade pip --quiet
-              
-              # Install required packages
-              if [ -f requirements.txt ]; then
-                pip install -r requirements.txt --quiet
-              else
-                pip install streamlit boto3 pymongo pillow --quiet
-              fi
-              
-              # Create systemd service for Streamlit
-              sudo bash -c 'cat > /etc/systemd/system/streamlit.service' << 'SERVICEEOF'
+            # Create deployment script
+            cat > deploy.sh << 'DEPLOY_EOF'
+#!/bin/bash
+set -e
+
+IP=$1
+echo "📦 Starting deployment to $IP"
+
+# Create application directory
+ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$IP "
+  sudo mkdir -p /var/www/streamlit
+  sudo chown -R ubuntu:ubuntu /var/www/streamlit
+"
+
+# Upload application files
+echo "📤 Uploading application files..."
+scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -r ./src/* ubuntu@$IP:/var/www/streamlit/
+
+# Setup application on remote instance
+ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$IP "
+  set -e
+  cd /var/www/streamlit
+  
+  echo '🐍 Setting up Python environment...'
+  sudo apt-get update > /dev/null 2>&1
+  sudo apt-get install -y python3-pip python3-venv nginx > /dev/null 2>&1
+  
+  # Create virtual environment
+  python3 -m venv venv
+  source venv/bin/activate
+  
+  # Install dependencies
+  pip install --upgrade pip --quiet
+  if [ -f requirements.txt ]; then
+    pip install -r requirements.txt --quiet
+  else
+    pip install streamlit boto3 pymongo pillow --quiet
+  fi
+  
+  # Create systemd service file
+  echo '🔧 Creating systemd service...'
+  sudo tee /etc/systemd/system/streamlit.service > /dev/null << 'SERVICE_EOF'
 [Unit]
 Description=Streamlit Education Portal
 After=network.target
@@ -205,232 +192,207 @@ After=network.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/var/www/streamlit
-Environment="PATH=/var/www/streamlit/venv/bin"
-Environment="MONGO_URI=mongodb://localhost:27017/"
-Environment="AWS_REGION=ap-south-1"
+Environment=PATH=/var/www/streamlit/venv/bin
+Environment=MONGO_URI=mongodb://localhost:27017/
+Environment=AWS_REGION=ap-south-1
 ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-SERVICEEOF
-              
-              # Reload systemd and start service
-              sudo systemctl daemon-reload
-              sudo systemctl enable streamlit
-              sudo systemctl restart streamlit
-              
-              # Wait a moment for service to start
-              sleep 3
-              
-              # Check if service is running
-              if sudo systemctl is-active --quiet streamlit; then
-                echo "✅ Streamlit service is running"
-              else
-                echo "⚠️ Streamlit service failed to start"
-                sudo systemctl status streamlit --no-pager || true
-              fi
-ENDSSH
-            
-            # Configure NGINX for Streamlit
-            echo "🔄 Configuring NGINX for Streamlit..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$IP 'bash -s' << 'ENDSSH'
-              # Create NGINX config for Streamlit
-              sudo bash -c 'cat > /etc/nginx/sites-available/default' << 'NGINXEOF'
+SERVICE_EOF
+
+  # Setup NGINX
+  echo '🌐 Configuring NGINX...'
+  sudo tee /etc/nginx/sites-available/default > /dev/null << 'NGINX_EOF'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-
     server_name _;
 
     location / {
         proxy_pass http://localhost:8501;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $server_name;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \"upgrade\";
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$server_name;
         proxy_read_timeout 86400;
     }
 }
-NGINXEOF
-              
-              # Test and restart NGINX
-              sudo nginx -t
-              sudo systemctl restart nginx
-              
-              # Check if NGINX is running
-              if sudo systemctl is-active --quiet nginx; then
-                echo "✅ NGINX service is running"
-              else
-                echo "⚠️ NGINX service failed to start"
-                sudo systemctl status nginx --no-pager || true
-              fi
-ENDSSH
+NGINX_EOF
+
+  # Enable and start services
+  echo '🔄 Starting services...'
+  sudo systemctl daemon-reload
+  sudo systemctl enable streamlit
+  sudo systemctl restart streamlit
+  sudo systemctl enable nginx
+  sudo systemctl restart nginx
+  
+  # Wait for service to start
+  sleep 5
+  
+  # Check service status
+  if sudo systemctl is-active --quiet streamlit; then
+    echo '✅ Streamlit service is running'
+  else
+    echo '❌ Streamlit service failed to start'
+    sudo systemctl status streamlit
+    exit 1
+  fi
+  
+  if sudo systemctl is-active --quiet nginx; then
+    echo '✅ NGINX service is running'
+  else
+    echo '❌ NGINX service failed to start'
+    sudo systemctl status nginx
+    exit 1
+  fi
+  
+  echo '✅ Deployment completed successfully'
+"
+
+echo "✅ Successfully deployed to $IP"
+DEPLOY_EOF
+
+            chmod +x deploy.sh
+            ./deploy.sh "$IP"
             
-            echo "✅ Deployment to $IP completed"
             echo ""
           done
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ All instances deployed successfully"
+          echo "🎉 All instances deployed successfully!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-      - name: Verify instance health
+      - name: Verify deployment
         if: steps.get-instances.outputs.instances_found == 'true'
-        continue-on-error: true
         run: |
-          echo "🔍 Verifying Streamlit health on each instance..."
-          
-          # Convert space-separated IPs to array
+          echo "🔍 Verifying deployment health..."
           IPS="${{ steps.get-instances.outputs.instances }}"
           
           for IP in $IPS; do
-            echo "Testing $IP..."
-            
-            # Try to reach Streamlit directly on the instance
-            for i in {1..3}; do
-              if curl -f -s -m 5 http://$IP/ > /dev/null 2>&1; then
-                echo "✅ $IP - Streamlit is responding"
+            echo "Checking $IP..."
+            for i in {1..5}; do
+              if curl -f -s -m 10 "http://$IP/" > /dev/null; then
+                echo "✅ $IP - Application is responding"
                 break
               else
-                if [ $i -lt 3 ]; then
-                  echo "⏳ $IP - Waiting for Streamlit to start (attempt $i/3)..."
-                  sleep 5
+                if [ $i -eq 5 ]; then
+                  echo "⚠️ $IP - Application not responding (may still be starting)"
                 else
-                  echo "⚠️ $IP - Streamlit not responding yet (may still be starting)"
+                  echo "⏳ $IP - Waiting for application... (attempt $i/5)"
+                  sleep 10
                 fi
               fi
             done
           done
 
-      - name: Get ALB DNS
-        id: get-alb
-        continue-on-error: true
+      - name: Get ALB DNS name
+        id: get-alb-dns
+        if: steps.check-infra.outputs.alb_exists == 'true'
         run: |
           ALB_DNS=$(aws elbv2 describe-load-balancers \
             --names crud-app-alb \
             --query 'LoadBalancers[0].DNSName' \
             --output text 2>/dev/null || echo "")
           
-          if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" == "None" ]; then
-            echo "⚠️ ALB not found. Please deploy Terraform infrastructure first:"
-            echo "  cd terraform-crud/terraform"
-            echo "  terraform init"
-            echo "  terraform apply"
-            echo "alb_dns=" >> $GITHUB_OUTPUT
-            echo "alb_exists=false" >> $GITHUB_OUTPUT
-          else
+          if [ -n "$ALB_DNS" ] && [ "$ALB_DNS" != "None" ]; then
             echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
-            echo "alb_exists=true" >> $GITHUB_OUTPUT
             echo "✅ ALB DNS: $ALB_DNS"
+          else
+            echo "alb_dns=" >> $GITHUB_OUTPUT
+            echo "⚠️ Could not retrieve ALB DNS"
           fi
 
-      - name: Wait for ALB target health
-        if: steps.get-alb.outputs.alb_exists == 'true'
+      - name: Wait for ALB health
+        if: steps.get-alb-dns.outputs.alb_dns
         run: |
-          echo "⏳ Waiting for instances to become healthy in ALB..."
-          
-          # Get target group ARN
+          echo "⏳ Waiting for ALB targets to become healthy..."
           TG_ARN=$(aws elbv2 describe-target-groups \
             --names crud-app-tg \
             --query 'TargetGroups[0].TargetGroupArn' \
             --output text 2>/dev/null || echo "")
           
           if [ -z "$TG_ARN" ]; then
-            echo "⚠️ Target group not found, skipping health check"
+            echo "⚠️ Target group not found"
             exit 0
           fi
           
-          # Wait up to 5 minutes for targets to become healthy
-          for i in {1..20}; do
+          for i in {1..12}; do
             HEALTHY_COUNT=$(aws elbv2 describe-target-health \
               --target-group-arn "$TG_ARN" \
               --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' \
               --output text 2>/dev/null || echo "0")
             
-            echo "Attempt $i/20: $HEALTHY_COUNT healthy target(s)"
+            echo "Check $i/12: $HEALTHY_COUNT healthy target(s)"
             
-            if [ "$HEALTHY_COUNT" -gt "0" ]; then
-              echo "✅ At least one target is healthy!"
+            if [ "$HEALTHY_COUNT" -gt 0 ]; then
+              echo "✅ Targets are healthy!"
               break
             fi
             
-            if [ $i -lt 20 ]; then
-              echo "Waiting 15 seconds..."
-              sleep 15
-            fi
-          done
-
-      - name: Health check via ALB
-        if: steps.get-alb.outputs.alb_exists == 'true'
-        continue-on-error: true
-        run: |
-          echo "🔍 Testing ALB health endpoint..."
-          
-          # Try health check with retries
-          MAX_RETRIES=5
-          RETRY_COUNT=0
-          
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            
-            if curl -f -s -o /dev/null -w "%{http_code}" http://${{ steps.get-alb.outputs.alb_dns }}/ | grep -q "200"; then
-              echo "✅ Health check passed!"
-              echo "✅ Deployment successful!"
-              echo "🌐 Application URL: http://${{ steps.get-alb.outputs.alb_dns }}"
-              exit 0
-            fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "⚠️ Health check failed, retrying in 10 seconds..."
+            if [ $i -lt 12 ]; then
               sleep 10
             fi
           done
-          
-          echo "⚠️ Health check failed after $MAX_RETRIES attempts"
-          echo "This may be normal if Streamlit is still starting up"
-          echo "Check the ALB manually: http://${{ steps.get-alb.outputs.alb_dns }}"
-          exit 0
-      
-      - name: Health check skipped
-        if: steps.get-alb.outputs.alb_exists != 'true'
-        run: |
-          echo "⚠️ Health check skipped - ALB not found"
-          echo "📋 Code deployed to instances, but ALB is not configured"
-          echo "🔧 Next steps:"
-          echo "  1. Deploy Terraform infrastructure to create the ALB"
-          echo "  2. Re-run this workflow for full deployment verification"
 
-      - name: Deployment summary
-        if: success()
+      - name: Test ALB endpoint
+        if: steps.get-alb-dns.outputs.alb_dns
         run: |
-          echo "### 🚀 Streamlit Deployment Successful! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "🔍 Testing ALB endpoint..."
+          ALB_URL="http://${{ steps.get-alb-dns.outputs.alb_dns }}"
+          
+          for i in {1..6}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$ALB_URL" || echo "000")
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ ALB health check passed!"
+              echo "🌐 Application is live at: $ALB_URL"
+              break
+            else
+              if [ $i -eq 6 ]; then
+                echo "⚠️ ALB not fully responsive yet (HTTP $HTTP_CODE)"
+                echo "🔗 Application URL: $ALB_URL"
+              else
+                echo "⏳ ALB check $i/6 failed (HTTP $HTTP_CODE), retrying..."
+                sleep 10
+              fi
+            fi
+          done
+
+      - name: Create deployment summary
+        run: |
+          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.get-alb.outputs.alb_exists }}" == "true" ]; then
-            echo "**Application URL:** http://${{ steps.get-alb.outputs.alb_dns }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Application Type:** Streamlit Education Portal" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ **ALB Not Found** - Infrastructure not fully deployed" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.get-instances.outputs.instances_found }}" = "true" ]; then
+            echo "**Status:** ✅ Application deployed successfully" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-            echo "1. Deploy Terraform infrastructure:" >> $GITHUB_STEP_SUMMARY
-            echo '   ```bash' >> $GITHUB_STEP_SUMMARY
-            echo "   cd infrastructure" >> $GITHUB_STEP_SUMMARY
-            echo "   terraform init" >> $GITHUB_STEP_SUMMARY
-            echo "   terraform apply" >> $GITHUB_STEP_SUMMARY
-            echo '   ```' >> $GITHUB_STEP_SUMMARY
-            echo "2. Re-run this workflow for full deployment" >> $GITHUB_STEP_SUMMARY
+            echo "**Deployed Instances:** ${{ steps.get-instances.outputs.instances }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ⚠️ Infrastructure setup required" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ steps.get-alb-dns.outputs.alb_dns }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Application URL:** http://${{ steps.get-alb-dns.outputs.alb_dns }}" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Instances Deployed:** ${{ steps.get-instances.outputs.instances }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Deployed via GitHub Actions*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa
+          rm -f deploy.sh
