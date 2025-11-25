@@ -29,8 +29,9 @@ db = client["assignments_db"]
 questions_collection = db["assignments"]
 
 user_name = "CloudAge-User"
-text_model_id = "amazon.nova-pro-v1:0"
-image_model_id = "amazon.nova-canvas-v1:0"
+# Use environment variables for model IDs with fallback to widely available models
+text_model_id = os.getenv("BEDROCK_TEXT_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+image_model_id = os.getenv("BEDROCK_IMAGE_MODEL_ID", "amazon.titan-image-generator-v1")
 
 # Session state
 if "input-text" not in st.session_state:
@@ -51,14 +52,32 @@ def parse_text_to_lines(text):
 def query_generate_questions_answers_endpoint(input_text):
     """Call Bedrock text model to generate Q&A"""
     prompt = f"""{input_text}
+
 Using the above context, please generate ten questions and answers you could ask students about this information.
-Format the output as a list of ten JSON objects containing the keys:
+Format the output as a JSON array with objects containing "Id", "Question", and "Answer" keys.
+
+Example format:
+[
+  {{"Id": 1, "Question": "What is...", "Answer": "..."}},
+  {{"Id": 2, "Question": "How does...", "Answer": "..."}}
+]
 
 Make sure each question is based on the provided context, and the answers are clear and correct."""
-    input_data = {
-        "inferenceConfig": {"max_new_tokens": 1000},
-        "messages": [{"role": "user", "content": [{"text": prompt}]}],
-    }
+    
+    # Support both Claude and Nova model formats
+    if "anthropic.claude" in text_model_id:
+        input_data = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2000,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+    else:
+        # Nova format
+        input_data = {
+            "inferenceConfig": {"max_new_tokens": 2000},
+            "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        }
+    
     try:
         qa_response = bedrock_client.invoke_model(
             modelId=text_model_id,
@@ -71,7 +90,14 @@ Make sure each question is based on the provided context, and the answers are cl
         return []
 
     response_body = json.loads(qa_response.get("body").read().decode())
-    response_text = response_body["output"]["message"]["content"][0]["text"]
+    
+    # Parse response based on model type
+    if "anthropic.claude" in text_model_id:
+        response_text = response_body["content"][0]["text"]
+    else:
+        # Nova format
+        response_text = response_body["output"]["message"]["content"][0]["text"]
+    
     return parse_text_to_lines(response_text)
 
 

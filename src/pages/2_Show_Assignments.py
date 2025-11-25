@@ -8,9 +8,16 @@ import os
 from components.Parameter_store import S3_BUCKET_NAME
 
 
-# ---------------- MongoDB Setup ---------------- #
-# Replace with your MongoDB URI (Atlas or local MongoDB)
+# ---------------- AWS + MongoDB Setup ---------------- #
+aws_region = os.getenv("AWS_REGION", "us-east-1")
 mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+
+session = boto3.Session(
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=aws_region,
+)
+
 client = MongoClient(mongo_uri)
 
 # Database & Collection
@@ -27,7 +34,7 @@ def get_records_from_mongodb():
 
 # Download image from S3 bucket
 def download_image(image_name, file_name):
-    s3 = boto3.client("s3")
+    s3 = session.client("s3")
     try:
         s3.download_file(S3_BUCKET_NAME, image_name, file_name)
         return True

@@ -15,11 +15,20 @@ answer = None
 show_prompt = None
 prompt = None
 
-bedrock_client = boto3.client("bedrock-runtime")
+# AWS + MongoDB setup
+aws_region = os.getenv("AWS_REGION", "us-east-1")
+mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+
+session = boto3.Session(
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=aws_region,
+)
+
+bedrock_client = session.client("bedrock-runtime")
 user_name = "CloudAge-User"
 
 # ---------------- MongoDB Setup ---------------- #
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 client = MongoClient(mongo_uri)
 db = client["assignments_db"]
 
@@ -36,7 +45,7 @@ def get_assignments_from_mongodb():
 
 def download_image(image_name, file_name):
     """Download images from S3 bucket."""
-    s3 = boto3.client("s3")
+    s3 = session.client("s3")
     try:
         s3.download_file(S3_BUCKET_NAME, image_name, file_name)
         return True
