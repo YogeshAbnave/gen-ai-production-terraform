@@ -124,6 +124,14 @@ jobs:
           echo "3. **Re-run This Workflow**" >> $GITHUB_STEP_SUMMARY
           exit 1
 
+      - name: Get S3 bucket name from Terraform
+        id: get-s3-bucket
+        run: |
+          cd infrastructure
+          S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "education-portal-images-b97bac46")
+          echo "bucket_name=$S3_BUCKET" >> $GITHUB_OUTPUT
+          echo "✅ S3 Bucket: $S3_BUCKET"
+
       - name: Setup SSH key
         if: steps.get-instances.outputs.instances_found == 'true'
         run: |
@@ -191,6 +199,7 @@ jobs:
           Environment=PATH=/var/www/streamlit/venv/bin
           Environment=MONGO_URI=mongodb://localhost:27017/
           Environment=AWS_REGION=ap-south-1
+          Environment=S3_BUCKET_NAME=${{ steps.get-s3-bucket.outputs.bucket_name }}
           Environment=BEDROCK_TEXT_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
           Environment=BEDROCK_IMAGE_MODEL_ID=amazon.titan-image-generator-v1
           ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0
