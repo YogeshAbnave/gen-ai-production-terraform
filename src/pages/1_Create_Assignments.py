@@ -24,7 +24,7 @@ session = boto3.Session(
 
 print("AWS session:", session)
 
-bedrock_client = boto3.client("bedrock-runtime")
+bedrock_client = session.client("bedrock-runtime")
 db = client["assignments_db"]
 questions_collection = db["assignments"]
 
@@ -110,7 +110,7 @@ def generate_assignment_id_key():
 
 def load_file_to_s3(file_name, object_name):
     """Upload file to S3"""
-    s3_client = boto3.client("s3")
+    s3_client = session.client("s3")
     try:
         s3_client.upload_file(file_name, S3_BUCKET_NAME, object_name)
         return True
