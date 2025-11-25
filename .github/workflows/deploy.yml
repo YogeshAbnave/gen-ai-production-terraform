@@ -200,7 +200,7 @@ jobs:
           Environment=MONGO_URI=mongodb://localhost:27017/
           Environment=AWS_REGION=ap-south-1
           Environment=S3_BUCKET_NAME=${{ steps.get-s3-bucket.outputs.bucket_name }}
-          Environment=BEDROCK_TEXT_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
+          Environment=BEDROCK_TEXT_MODEL_ID=amazon.titan-text-express-v1
           Environment=BEDROCK_IMAGE_MODEL_ID=amazon.titan-image-generator-v1
           ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0
           Restart=always

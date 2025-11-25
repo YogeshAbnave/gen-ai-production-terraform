@@ -188,7 +188,9 @@ terraform-crud/
 │   └── check-infrastructure.ps1  # Verify AWS infrastructure
 │
 ├── docs/                          # Documentation
-│   └── ARCHITECTURE.md           # Detailed architecture diagrams
+│   ├── ARCHITECTURE.md           # Detailed architecture diagrams
+│   ├── BEDROCK-SETUP.md          # Amazon Bedrock model setup guide
+│   └── MIGRATION.md              # Migration and restructure notes
 │
 ├── .github/                       # CI/CD
 │   └── workflows/

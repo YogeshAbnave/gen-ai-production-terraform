@@ -29,8 +29,8 @@ db = client["assignments_db"]
 questions_collection = db["assignments"]
 
 user_name = "CloudAge-User"
-# Use environment variables for model IDs with fallback to widely available models
-text_model_id = os.getenv("BEDROCK_TEXT_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+# Use environment variables for model IDs with fallback to Amazon Titan models (no marketplace subscription needed)
+text_model_id = os.getenv("BEDROCK_TEXT_MODEL_ID", "amazon.titan-text-express-v1")
 image_model_id = os.getenv("BEDROCK_IMAGE_MODEL_ID", "amazon.titan-image-generator-v1")
 
 # Session state
@@ -64,12 +64,23 @@ Example format:
 
 Make sure each question is based on the provided context, and the answers are clear and correct."""
     
-    # Support both Claude and Nova model formats
+    # Support different model formats
     if "anthropic.claude" in text_model_id:
+        # Claude format
         input_data = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 2000,
             "messages": [{"role": "user", "content": prompt}],
+        }
+    elif "amazon.titan-text" in text_model_id:
+        # Titan Text format
+        input_data = {
+            "inputText": prompt,
+            "textGenerationConfig": {
+                "maxTokenCount": 2000,
+                "temperature": 0.7,
+                "topP": 0.9,
+            }
         }
     else:
         # Nova format
@@ -94,6 +105,8 @@ Make sure each question is based on the provided context, and the answers are cl
     # Parse response based on model type
     if "anthropic.claude" in text_model_id:
         response_text = response_body["content"][0]["text"]
+    elif "amazon.titan-text" in text_model_id:
+        response_text = response_body["results"][0]["outputText"]
     else:
         # Nova format
         response_text = response_body["output"]["message"]["content"][0]["text"]
