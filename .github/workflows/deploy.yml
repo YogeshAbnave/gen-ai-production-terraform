@@ -147,7 +147,7 @@ jobs:
 #!/bin/bash
 set -e
 
-IP=$1
+IP="$1"
 echo "📦 Starting deployment to $IP"
 
 # Create application directory
@@ -215,7 +215,7 @@ server {
         proxy_pass http://localhost:8501;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
         proxy_set_header X-Real-IP \$remote_addr;
