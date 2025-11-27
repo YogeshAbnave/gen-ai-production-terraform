@@ -58,12 +58,24 @@ resource "aws_iam_role_policy" "s3_policy" {
           "s3:PutObject",
           "s3:GetObject",
           "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:ListBucket",
+          "s3:HeadBucket"
         ]
         Resource = [
           "${aws_s3_bucket.images.arn}/*",
           aws_s3_bucket.images.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:PutBucketVersioning",
+          "s3:PutEncryptionConfiguration",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:ListAllMyBuckets"
+        ]
+        Resource = "*"
       }
     ]
   })

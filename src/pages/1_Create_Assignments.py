@@ -202,14 +202,75 @@ def generate_assignment_id_key():
     return str((epoch * 1000) + rand_id)
 
 
+def ensure_bucket_exists(s3_client, bucket_name):
+    """Create S3 bucket if it doesn't exist"""
+    try:
+        s3_client.head_bucket(Bucket=bucket_name)
+        return True
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '404':
+            # Bucket doesn't exist, create it
+            try:
+                region = aws_region
+                if region == 'us-east-1':
+                    s3_client.create_bucket(Bucket=bucket_name)
+                else:
+                    s3_client.create_bucket(
+                        Bucket=bucket_name,
+                        CreateBucketConfiguration={'LocationConstraint': region}
+                    )
+                
+                # Enable versioning
+                s3_client.put_bucket_versioning(
+                    Bucket=bucket_name,
+                    VersioningConfiguration={'Status': 'Enabled'}
+                )
+                
+                # Enable encryption
+                s3_client.put_bucket_encryption(
+                    Bucket=bucket_name,
+                    ServerSideEncryptionConfiguration={
+                        'Rules': [{'ApplyServerSideEncryptionByDefault': {'SSEAlgorithm': 'AES256'}}]
+                    }
+                )
+                
+                # Block public access
+                s3_client.put_public_access_block(
+                    Bucket=bucket_name,
+                    PublicAccessBlockConfiguration={
+                        'BlockPublicAcls': True,
+                        'IgnorePublicAcls': True,
+                        'BlockPublicPolicy': True,
+                        'RestrictPublicBuckets': True
+                    }
+                )
+                
+                st.success(f"✅ Created S3 bucket: {bucket_name}")
+                return True
+            except ClientError as create_error:
+                st.error(f"Failed to create bucket {bucket_name}: {create_error}")
+                return False
+        else:
+            st.error(f"Error checking bucket {bucket_name}: {e}")
+            return False
+
+
 def load_file_to_s3(file_name, object_name):
-    """Upload file to S3"""
+    """Upload file to S3, creating bucket if needed"""
     s3_client = session.client("s3")
+    
+    # Ensure bucket exists
+    if not ensure_bucket_exists(s3_client, S3_BUCKET_NAME):
+        return False
+    
     try:
         s3_client.upload_file(file_name, S3_BUCKET_NAME, object_name)
         return True
     except ClientError as e:
-        logging.error(e)
+        error_msg = str(e)
+        st.error(f"Failed to upload {file_name} to {S3_BUCKET_NAME}/{object_name}: {error_msg}")
+        logging.error(f"S3 upload error: {error_msg}")
         return False
 
 

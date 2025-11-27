@@ -47,10 +47,16 @@ def download_image(image_name, file_name):
     """Download images from S3 bucket."""
     s3 = session.client("s3")
     try:
+        # Check if bucket exists
+        s3.head_bucket(Bucket=S3_BUCKET_NAME)
         s3.download_file(S3_BUCKET_NAME, image_name, file_name)
         return True
     except ClientError as e:
-        logging.error(e)
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code == '404':
+            logging.warning(f"Bucket {S3_BUCKET_NAME} or object {image_name} not found")
+        else:
+            logging.error(f"S3 download error: {e}")
         return False
 
 
