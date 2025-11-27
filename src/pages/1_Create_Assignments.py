@@ -5,16 +5,14 @@ import boto3, numpy as np, streamlit as st
 from PIL import Image
 from botocore.exceptions import ClientError
 from components.Parameter_store import S3_BUCKET_NAME
-from pymongo import MongoClient
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# AWS + MongoDB setup
+# AWS setup
 aws_region = os.getenv("AWS_REGION", "us-east-1")
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-client = MongoClient(mongo_uri)
+dynamodb_table_name = os.getenv("DYNAMODB_TABLE_NAME", "app-data-table")
 
 session = boto3.Session(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -25,8 +23,9 @@ session = boto3.Session(
 print("AWS session:", session)
 
 bedrock_client = session.client("bedrock-runtime")
-db = client["assignments_db"]
-questions_collection = db["assignments"]
+dynamodb_client = session.client("dynamodb")
+dynamodb_resource = session.resource("dynamodb")
+assignments_table = dynamodb_resource.Table(dynamodb_table_name)
 
 user_name = "CloudAge-User"
 # Use environment variables for model IDs with fallback to Amazon Titan models (no marketplace subscription needed)
@@ -320,18 +319,24 @@ def load_file_to_s3(file_name, object_name):
         return False
 
 
-def insert_record_to_mongodb(assignment_id, prompt, s3_image_name, data):
-    """Insert assignment record into MongoDB"""
+def insert_record_to_dynamodb(assignment_id, prompt, s3_image_name, data):
+    """Insert assignment record into DynamoDB"""
     record = {
+        "id": assignment_id,  # DynamoDB primary key
         "assignment_id": assignment_id,
         "teacher_id": user_name,
         "prompt": prompt,
         "s3_image_name": s3_image_name,
         "question_answers": data,
-        "created_at": time.time(),
+        "created_at": str(time.time()),
+        "record_type": "assignment"  # To distinguish record types
     }
-    result = questions_collection.insert_one(record)
-    return result.inserted_id
+    try:
+        assignments_table.put_item(Item=record)
+        return assignment_id
+    except ClientError as e:
+        logger.error(f"DynamoDB insert error: {str(e)}")
+        raise
 
 
 # ---------------- Streamlit UI ---------------- #
@@ -403,8 +408,8 @@ if st.button("Save Assignment"):
                 object_name = "no image created"
                 logger.info(f"No image file found for assignment {assignment_id}")
 
-            # Save to MongoDB
-            insert_record_to_mongodb(
+            # Save to DynamoDB
+            insert_record_to_dynamodb(
                 assignment_id, text, object_name, questions_answers
             )
             

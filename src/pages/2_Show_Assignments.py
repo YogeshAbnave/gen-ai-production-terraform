@@ -3,14 +3,13 @@ import streamlit as st
 from PIL import Image
 from botocore.exceptions import ClientError
 import boto3
-from pymongo import MongoClient
 import os
 from components.Parameter_store import S3_BUCKET_NAME
 
 
-# ---------------- AWS + MongoDB Setup ---------------- #
+# ---------------- AWS + DynamoDB Setup ---------------- #
 aws_region = os.getenv("AWS_REGION", "us-east-1")
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+dynamodb_table_name = os.getenv("DYNAMODB_TABLE_NAME", "app-data-table")
 
 session = boto3.Session(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -18,18 +17,33 @@ session = boto3.Session(
     region_name=aws_region,
 )
 
-client = MongoClient(mongo_uri)
-
-# Database & Collection
-db = client["assignments_db"]
-assignments_collection = db["assignments"]
+dynamodb_resource = session.resource("dynamodb")
+assignments_table = dynamodb_resource.Table(dynamodb_table_name)
 
 
 # ---------------- Functions ---------------- #
-# Fetch records from MongoDB
-def get_records_from_mongodb():
-    records = list(assignments_collection.find({}, {"_id": 0}))  # exclude internal _id
-    return records
+# Fetch records from DynamoDB
+def get_records_from_dynamodb():
+    try:
+        response = assignments_table.scan(
+            FilterExpression="attribute_exists(record_type) AND record_type = :type",
+            ExpressionAttributeValues={":type": "assignment"}
+        )
+        records = response.get("Items", [])
+        
+        # Handle pagination if there are more items
+        while "LastEvaluatedKey" in response:
+            response = assignments_table.scan(
+                FilterExpression="attribute_exists(record_type) AND record_type = :type",
+                ExpressionAttributeValues={":type": "assignment"},
+                ExclusiveStartKey=response["LastEvaluatedKey"]
+            )
+            records.extend(response.get("Items", []))
+        
+        return records
+    except ClientError as e:
+        st.error(f"Error fetching assignments: {str(e)}")
+        return []
 
 
 # Download image from S3 bucket
@@ -55,8 +69,8 @@ st.set_page_config(page_title="Show Assignment", page_icon=":bar_chart:", layout
 st.markdown("# Selected Assignment")
 st.sidebar.header("Show Assignments")
 
-# Get assignments from MongoDB
-db_records = get_records_from_mongodb()
+# Get assignments from DynamoDB
+db_records = get_records_from_dynamodb()
 prompts = [record["assignment_id"] for record in db_records]
 
 prompt_option = st.sidebar.selectbox("Select an assignment", prompts)

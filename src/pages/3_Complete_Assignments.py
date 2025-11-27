@@ -7,7 +7,6 @@ from PIL import Image
 from botocore.exceptions import ClientError
 import boto3
 from scipy.spatial import distance
-from pymongo import MongoClient, DESCENDING
 import os
 from components.Parameter_store import S3_BUCKET_NAME
 
@@ -15,9 +14,9 @@ answer = None
 show_prompt = None
 prompt = None
 
-# AWS + MongoDB setup
+# AWS + DynamoDB setup
 aws_region = os.getenv("AWS_REGION", "us-east-1")
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+dynamodb_table_name = os.getenv("DYNAMODB_TABLE_NAME", "app-data-table")
 
 session = boto3.Session(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -26,21 +25,34 @@ session = boto3.Session(
 )
 
 bedrock_client = session.client("bedrock-runtime")
+dynamodb_resource = session.resource("dynamodb")
+assignments_table = dynamodb_resource.Table(dynamodb_table_name)
 user_name = "CloudAge-User"
-
-# ---------------- MongoDB Setup ---------------- #
-client = MongoClient(mongo_uri)
-db = client["assignments_db"]
-
-assignments_collection = db["assignments"]
-answers_collection = db["answers"]
 
 
 # ---------------- Functions ---------------- #
-def get_assignments_from_mongodb():
-    """Retrieve assignments from MongoDB."""
-    records = list(assignments_collection.find({}, {"_id": 0}))  # exclude internal id
-    return records
+def get_assignments_from_dynamodb():
+    """Retrieve assignments from DynamoDB."""
+    try:
+        response = assignments_table.scan(
+            FilterExpression="attribute_exists(record_type) AND record_type = :type",
+            ExpressionAttributeValues={":type": "assignment"}
+        )
+        records = response.get("Items", [])
+        
+        # Handle pagination
+        while "LastEvaluatedKey" in response:
+            response = assignments_table.scan(
+                FilterExpression="attribute_exists(record_type) AND record_type = :type",
+                ExpressionAttributeValues={":type": "assignment"},
+                ExclusiveStartKey=response["LastEvaluatedKey"]
+            )
+            records.extend(response.get("Items", []))
+        
+        return records
+    except ClientError as e:
+        st.error(f"Error fetching assignments: {str(e)}")
+        return []
 
 
 def download_image(image_name, file_name):
@@ -60,39 +72,63 @@ def download_image(image_name, file_name):
         return False
 
 
-def get_answer_record_from_mongodb(student_id, assignment_id, question_id):
-    """Get student’s answer for a specific assignment + question."""
-    return answers_collection.find_one(
-        {
-            "student_id": student_id,
-            "assignment_question_id": f"{assignment_id}_{question_id}",
-        },
-        {"_id": 0},
-    )
+def get_answer_record_from_dynamodb(student_id, assignment_id, question_id):
+    """Get student's answer for a specific assignment + question."""
+    try:
+        answer_id = f"answer_{student_id}_{assignment_id}_{question_id}"
+        response = assignments_table.get_item(Key={"id": answer_id})
+        return response.get("Item")
+    except ClientError as e:
+        logging.error(f"Error getting answer: {str(e)}")
+        return None
 
 
 def save_answer_record(student_id, assignment_id, question_id, answer, score):
-    """Insert or update student’s answer with highest score only."""
-    answers_collection.update_one(
-        {
-            "student_id": student_id,
-            "assignment_question_id": f"{assignment_id}_{question_id}",
-        },
-        {"$max": {"score": score}, "$set": {"answer": answer}},
-        upsert=True,
-    )
+    """Insert or update student's answer with highest score only."""
+    try:
+        answer_id = f"answer_{student_id}_{assignment_id}_{question_id}"
+        
+        # Get existing record to check score
+        existing = get_answer_record_from_dynamodb(student_id, assignment_id, question_id)
+        
+        # Only update if new score is higher or no existing record
+        if not existing or float(score) > float(existing.get("score", 0)):
+            assignments_table.put_item(
+                Item={
+                    "id": answer_id,
+                    "student_id": student_id,
+                    "assignment_id": assignment_id,
+                    "question_id": str(question_id),
+                    "assignment_question_id": f"{assignment_id}_{question_id}",
+                    "answer": answer,
+                    "score": str(score),
+                    "record_type": "answer"
+                }
+            )
+    except ClientError as e:
+        logging.error(f"Error saving answer: {str(e)}")
+        raise
 
 
-def get_high_score_answer_records_from_mongodb(assignment_id, question_id, limit=5):
+def get_high_score_answer_records_from_dynamodb(assignment_id, question_id, limit=5):
     """Get top scores for a specific question."""
-    return list(
-        answers_collection.find(
-            {"assignment_question_id": f"{assignment_id}_{question_id}"},
-            {"_id": 0, "student_id": 1, "score": 1},
+    try:
+        response = assignments_table.scan(
+            FilterExpression="record_type = :type AND assignment_question_id = :aq_id",
+            ExpressionAttributeValues={
+                ":type": "answer",
+                ":aq_id": f"{assignment_id}_{question_id}"
+            }
         )
-        .sort("score", DESCENDING)
-        .limit(limit)
-    )
+        
+        records = response.get("Items", [])
+        
+        # Sort by score descending and limit
+        sorted_records = sorted(records, key=lambda x: float(x.get("score", 0)), reverse=True)
+        return sorted_records[:limit]
+    except ClientError as e:
+        logging.error(f"Error getting high scores: {str(e)}")
+        return []
 
 
 def get_text_embed(payload):
@@ -150,8 +186,8 @@ st.set_page_config(page_title="Answer Questions", page_icon=":question:", layout
 st.markdown("# Answer Questions")
 st.sidebar.header("Answer Questions")
 
-# Load assignments from MongoDB
-assignment_records = get_assignments_from_mongodb()
+# Load assignments from DynamoDB
+assignment_records = get_assignments_from_dynamodb()
 assignment_ids = [record["assignment_id"] for record in assignment_records]
 assignment_ids.insert(0, "<Select>")
 
@@ -198,7 +234,7 @@ if assignment_selection:
 
         st.markdown("------------")
 
-        # Save/update best score in MongoDB
+        # Save/update best score in DynamoDB
         save_answer_record(
             user_name, assignment_id_selection, question_id, answer, score
         )
@@ -207,7 +243,7 @@ if assignment_selection:
         )
 
         # Show leaderboard
-        high_score_records = get_high_score_answer_records_from_mongodb(
+        high_score_records = get_high_score_answer_records_from_dynamodb(
             assignment_id_selection, question_id
         )
         st.write("Top Three High Scores:")

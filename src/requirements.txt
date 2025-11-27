@@ -1,6 +1,5 @@
 streamlit
 boto3
-pymongo
 numpy
 scipy
 Pillow
