@@ -69,6 +69,23 @@ resource "aws_iam_role_policy" "s3_policy" {
       {
         Effect = "Allow"
         Action = [
+          "s3:HeadBucket",
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::${var.s3_bucket_prefix}-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::${var.s3_bucket_prefix}-*/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "s3:CreateBucket",
           "s3:PutBucketVersioning",
           "s3:PutEncryptionConfiguration",

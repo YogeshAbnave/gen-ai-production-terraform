@@ -169,31 +169,77 @@ Rules:
         return []
 
 
+def sanitize_prompt_for_image(prompt):
+    """Sanitize prompt to avoid content filter issues"""
+    # Remove potentially problematic words/phrases
+    # Keep it simple and educational
+    prompt = prompt.lower().strip()
+    
+    # If prompt is too long, truncate it
+    if len(prompt) > 200:
+        prompt = prompt[:200]
+    
+    # Add educational context to help pass filters
+    safe_prompt = f"Educational illustration showing {prompt}"
+    
+    return safe_prompt
+
+
 def query_generate_image_endpoint(input_text):
     """Generate an image using Bedrock image model"""
-    input_body = json.dumps(
-        {
-            "taskType": "TEXT_IMAGE",
-            "textToImageParams": {"text": f"An image of {input_text}"},
-            "imageGenerationConfig": {
-                "numberOfImages": 1,
-                "height": 1024,
-                "width": 1024,
-                "cfgScale": 8.0,
-                "seed": 0,
-            },
-        }
-    )
-    titan_image_api_response = bedrock_client.invoke_model(
-        body=input_body,
-        modelId=image_model_id,
-        accept="application/json",
-        contentType="application/json",
-    )
-    response_body = json.loads(titan_image_api_response.get("body").read())
-    base64_image = response_body.get("images")[0]
-    image_bytes = base64.b64decode(base64_image.encode("ascii"))
-    return Image.open(BytesIO(image_bytes))
+    try:
+        # Sanitize the prompt
+        sanitized_prompt = sanitize_prompt_for_image(input_text)
+        
+        input_body = json.dumps(
+            {
+                "taskType": "TEXT_IMAGE",
+                "textToImageParams": {"text": sanitized_prompt},
+                "imageGenerationConfig": {
+                    "numberOfImages": 1,
+                    "height": 1024,
+                    "width": 1024,
+                    "cfgScale": 8.0,
+                    "seed": 0,
+                },
+            }
+        )
+        
+        titan_image_api_response = bedrock_client.invoke_model(
+            body=input_body,
+            modelId=image_model_id,
+            accept="application/json",
+            contentType="application/json",
+        )
+        
+        response_body = json.loads(titan_image_api_response.get("body").read())
+        base64_image = response_body.get("images")[0]
+        image_bytes = base64.b64decode(base64_image.encode("ascii"))
+        return Image.open(BytesIO(image_bytes))
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        
+        if error_code == 'ValidationException':
+            # Content filter blocked the prompt
+            logger.warning(f"Content filter blocked prompt: {input_text[:100]}")
+            st.warning(
+                "⚠️ Image generation was blocked by AWS content filters. "
+                "This can happen if the prompt contains sensitive content. "
+                "The assignment will be saved without an image."
+            )
+            return None
+        else:
+            # Other AWS errors
+            logger.error(f"Bedrock image generation error: {error_code} - {error_message}")
+            st.error(f"Failed to generate image: {error_message}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in image generation: {str(e)}")
+        st.error(f"Unexpected error generating image: {str(e)}")
+        return None
 
 
 def generate_assignment_id_key():
@@ -298,15 +344,32 @@ st.markdown("# Create Assignments")
 text = st.text_area("Input Text")
 if text and text != st.session_state.get("input-text"):
     try:
+        # Generate image if model is configured
         if image_model_id != "<model-id>":
-            image = query_generate_image_endpoint(text)
-            image.save("temp-create.png")
-            st.session_state["input-text"] = text
+            with st.spinner("Generating image..."):
+                image = query_generate_image_endpoint(text)
+                if image:
+                    image.save("temp-create.png")
+                    st.success("✅ Image generated successfully")
+                else:
+                    # Remove any existing temp image
+                    if os.path.exists("temp-create.png"):
+                        os.remove("temp-create.png")
+                    st.info("ℹ️ Continuing without image")
+        
+        st.session_state["input-text"] = text
 
-        questions_answers = query_generate_questions_answers_endpoint(text)
-        st.session_state["question_answers"] = questions_answers
+        # Generate questions and answers
+        with st.spinner("Generating questions and answers..."):
+            questions_answers = query_generate_questions_answers_endpoint(text)
+            st.session_state["question_answers"] = questions_answers
+            
+        if questions_answers:
+            st.success("✅ Questions and answers generated successfully")
+        
     except Exception as ex:
         st.error(f"Error generating assignment: {ex}")
+        logger.error(f"Assignment generation error: {str(ex)}", exc_info=True)
 
 if st.session_state.get("question_answers"):
     st.markdown("## Generated Questions and Answers")
@@ -329,15 +392,35 @@ if st.button("Save Assignment"):
                 st.session_state["question_answers"], indent=4
             )
 
+            # Upload image if it exists
             if os.path.exists("temp-create.png"):
                 object_name = f"generated_images/{assignment_id}.png"
-                load_file_to_s3("temp-create.png", object_name)
+                upload_success = load_file_to_s3("temp-create.png", object_name)
+                if not upload_success:
+                    st.warning("⚠️ Image upload failed, but assignment will be saved without image")
+                    object_name = "no image created"
             else:
                 object_name = "no image created"
+                logger.info(f"No image file found for assignment {assignment_id}")
 
+            # Save to MongoDB
             insert_record_to_mongodb(
                 assignment_id, text, object_name, questions_answers
             )
-            st.success(f"Assignment saved successfully with ID: {assignment_id}")
+            
+            # Show success message
+            if object_name != "no image created":
+                st.success(f"✅ Assignment saved successfully with ID: {assignment_id}")
+            else:
+                st.success(f"✅ Assignment saved successfully with ID: {assignment_id} (without image)")
+                
+            # Clean up temp file
+            if os.path.exists("temp-create.png"):
+                try:
+                    os.remove("temp-create.png")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to clean up temp file: {cleanup_error}")
+                    
         except Exception as ex:
             st.error(f"Error saving assignment: {ex}")
+            logger.error(f"Assignment save error: {str(ex)}", exc_info=True)

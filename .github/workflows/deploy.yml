@@ -129,7 +129,7 @@ jobs:
         if: steps.check-infra.outputs.asg_exists == 'true'
         run: |
           cd infrastructure
-          S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "education-portal-images-b97bac46")
+          S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "education-portal-images-a6833f4f")
           echo "bucket_name=$S3_BUCKET" >> $GITHUB_OUTPUT
           echo "✅ S3 Bucket: $S3_BUCKET"
         continue-on-error: true
@@ -201,7 +201,7 @@ jobs:
           Environment=PATH=/var/www/streamlit/venv/bin
           Environment=MONGO_URI=mongodb://localhost:27017/
           Environment=AWS_REGION=us-east-1
-          Environment=S3_BUCKET_NAME=${{ steps.get-s3-bucket.outputs.bucket_name || 'education-portal-images-b97bac46' }}
+          Environment=S3_BUCKET_NAME=${{ steps.get-s3-bucket.outputs.bucket_name || 'education-portal-images-a6833f4f' }}
           Environment=BEDROCK_TEXT_MODEL_ID=amazon.titan-text-express-v1
           Environment=BEDROCK_IMAGE_MODEL_ID=amazon.titan-image-generator-v1
           ExecStart=/var/www/streamlit/venv/bin/streamlit run Home.py --server.port 8501 --server.address 0.0.0.0

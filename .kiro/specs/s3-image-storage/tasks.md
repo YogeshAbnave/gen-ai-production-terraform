@@ -31,7 +31,10 @@ This implementation plan breaks down the S3 image storage feature into discrete,
 
 
 
-- [ ] 3. Update IAM role with S3 permissions
+- [x] 3. Update IAM role with S3 permissions
+
+
+
   - Modify `infrastructure/iam.tf` to add S3 policy to existing EC2 role
   - Grant permissions: s3:PutObject, s3:GetObject, s3:DeleteObject, s3:ListBucket
   - Scope permissions to the specific S3 bucket ARN
