@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 import boto3
 from scipy.spatial import distance
 import os
-from components.Parameter_store import S3_BUCKET_NAME
+from components.Parameter_store import S3_BUCKET_NAME, CLOUDFRONT_DOMAIN
 
 answer = None
 show_prompt = None
@@ -55,20 +55,37 @@ def get_assignments_from_dynamodb():
         return []
 
 
-def download_image(image_name, file_name):
-    """Download images from S3 bucket."""
+def get_image_url(image_name):
+    """
+    Generate CloudFront URL for the image.
+    Falls back to S3 direct URL if CloudFront is not configured.
+    """
+    if not image_name or image_name == "no image created":
+        return None
+    
+    # Use CloudFront if configured
+    if CLOUDFRONT_DOMAIN:
+        return f"https://{CLOUDFRONT_DOMAIN}/{image_name}"
+    
+    # Fallback to S3 direct URL (for development/testing)
+    return f"https://{S3_BUCKET_NAME}.s3.amazonaws.com/{image_name}"
+
+
+def check_image_exists(image_name):
+    """Check if image exists in S3 bucket"""
+    if not image_name or image_name == "no image created":
+        return False
+    
     s3 = session.client("s3")
     try:
-        # Check if bucket exists
-        s3.head_bucket(Bucket=S3_BUCKET_NAME)
-        s3.download_file(S3_BUCKET_NAME, image_name, file_name)
+        s3.head_object(Bucket=S3_BUCKET_NAME, Key=image_name)
         return True
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', '')
         if error_code == '404':
-            logging.warning(f"Bucket {S3_BUCKET_NAME} or object {image_name} not found")
+            logging.warning(f"Image {image_name} not found in bucket {S3_BUCKET_NAME}")
         else:
-            logging.error(f"S3 download error: {e}")
+            logging.error(f"S3 check error: {e}")
         return False
 
 
@@ -200,11 +217,21 @@ if assignment_id_selection and assignment_id_selection != "<Select>":
             assignment_selection = assignment_record
 
 if assignment_selection:
-    # Show image
-    image_name = assignment_selection["s3_image_name"]
-    file_name = "temp-answer.png"
-    if download_image(image_name, file_name):
-        st.image(Image.open(file_name), use_container_width=True)
+    # Show image using CloudFront URL
+    image_name = assignment_selection.get("s3_image_name", "")
+    
+    if image_name and image_name != "no image created":
+        image_url = get_image_url(image_name)
+        if image_url:
+            try:
+                st.image(image_url, use_container_width=True)
+            except Exception as e:
+                logging.error(f"Error displaying image: {e}")
+                st.info("📷 Image not available")
+        else:
+            st.info("📷 No image available for this assignment")
+    else:
+        st.info("📷 No image available for this assignment")
 
     # Show prompt
     st.write(assignment_selection["prompt"])

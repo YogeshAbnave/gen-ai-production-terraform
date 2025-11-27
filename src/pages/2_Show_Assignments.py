@@ -4,7 +4,7 @@ from PIL import Image
 from botocore.exceptions import ClientError
 import boto3
 import os
-from components.Parameter_store import S3_BUCKET_NAME
+from components.Parameter_store import S3_BUCKET_NAME, CLOUDFRONT_DOMAIN
 
 
 # ---------------- AWS + DynamoDB Setup ---------------- #
@@ -46,20 +46,39 @@ def get_records_from_dynamodb():
         return []
 
 
-# Download image from S3 bucket
-def download_image(image_name, file_name):
+# Get CloudFront URL for image
+def get_image_url(image_name):
+    """
+    Generate CloudFront URL for the image.
+    Falls back to S3 direct URL if CloudFront is not configured.
+    """
+    if not image_name or image_name == "no image created":
+        return None
+    
+    # Use CloudFront if configured
+    if CLOUDFRONT_DOMAIN:
+        return f"https://{CLOUDFRONT_DOMAIN}/{image_name}"
+    
+    # Fallback to S3 direct URL (for development/testing)
+    return f"https://{S3_BUCKET_NAME}.s3.amazonaws.com/{image_name}"
+
+
+# Check if image exists in S3
+def check_image_exists(image_name):
+    """Check if image exists in S3 bucket"""
+    if not image_name or image_name == "no image created":
+        return False
+    
     s3 = session.client("s3")
     try:
-        # Check if bucket exists
-        s3.head_bucket(Bucket=S3_BUCKET_NAME)
-        s3.download_file(S3_BUCKET_NAME, image_name, file_name)
+        s3.head_object(Bucket=S3_BUCKET_NAME, Key=image_name)
         return True
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', '')
         if error_code == '404':
-            logging.warning(f"Bucket {S3_BUCKET_NAME} or object {image_name} not found")
+            logging.warning(f"Image {image_name} not found in bucket {S3_BUCKET_NAME}")
         else:
-            logging.error(f"S3 download error: {e}")
+            logging.error(f"S3 check error: {e}")
         return False
 
 
@@ -80,16 +99,21 @@ if prompt_option:
         if record["assignment_id"] == prompt_option:
             prompt_selection = record
 
-    image_name = prompt_selection["s3_image_name"]
-    file_name = "temp-show.png"
-    if (
-        image_name
-        and image_name != "no image created"
-        and download_image(image_name, file_name)
-    ):
-        st.image(Image.open(file_name), use_container_width=True)
+    image_name = prompt_selection.get("s3_image_name", "")
+    
+    # Display image using CloudFront URL
+    if image_name and image_name != "no image created":
+        image_url = get_image_url(image_name)
+        if image_url:
+            try:
+                st.image(image_url, use_container_width=True)
+            except Exception as e:
+                logging.error(f"Error displaying image: {e}")
+                st.info("📷 Image not available")
+        else:
+            st.info("📷 No image available for this assignment")
     else:
-        st.write("Image not found")
+        st.info("📷 No image available for this assignment")
 
     st.write(prompt_selection["prompt"])
     st.text_area("", prompt_selection["question_answers"], height=320)

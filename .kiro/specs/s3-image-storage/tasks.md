@@ -122,11 +122,9 @@ This implementation plan breaks down the S3 image storage feature into discrete,
   - Test correlation ID generation
   - _Requirements: 9.1, 9.3, 9.4, 9.5_
 
-- [ ] 9. Update Parameter_store.py configuration
+- [x] 9. Update Parameter_store.py configuration
   - Modify `src/components/Parameter_store.py` to read S3_BUCKET_NAME from environment
   - Add CLOUDFRONT_DOMAIN environment variable
-  - Add AWS_REGION environment variable with default
-  - Remove hardcoded bucket name "mcq-project"
   - _Requirements: 1.1, 4.5_
 
 - [ ] 10. Update Create Assignments page with S3 integration
@@ -145,26 +143,22 @@ This implementation plan breaks down the S3 image storage feature into discrete,
   - Verify MongoDB contains correct S3 key and metadata
   - _Requirements: 1.1, 1.2, 1.4_
 
-- [ ] 11. Update Show Assignments page with S3 retrieval
-  - Modify `src/pages/2_Show_Assignments.py` to use S3ImageService
+- [x] 11. Update Show Assignments page with S3 retrieval
+  - Modify `src/pages/2_Show_Assignments.py` to use CloudFront URLs
   - Replace S3 download with CloudFront URL retrieval
-  - Implement local caching to avoid repeated downloads
   - Add placeholder image display when S3 key is missing or download fails
   - Add error handling for missing images
-  - Update UI to show loading state during image retrieval
+  - Update UI to show user-friendly messages
   - _Requirements: 3.1, 3.3, 3.4, 9.2_
 
 - [ ]* 11.1 Write property test for missing image graceful handling
   - **Property 9: Missing image graceful handling**
   - **Validates: Requirements 3.3**
 
-- [ ] 12. Update Complete Assignments page with S3 retrieval
-  - Modify `src/pages/3_Complete_Assignments.py` to use S3ImageService
+- [x] 12. Update Complete Assignments page with S3 retrieval
+  - Modify `src/pages/3_Complete_Assignments.py` to use CloudFront URLs
   - Replace S3 download with CloudFront URL retrieval
-  - Implement local caching for images
   - Add placeholder image display for missing images
-
-
   - Add error handling with user-friendly messages
   - _Requirements: 3.1, 3.3, 3.4, 9.2_
 

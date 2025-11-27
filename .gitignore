@@ -46,6 +46,10 @@ src/backend/venv/
 src/backend/env/
 src/backend/ENV/
 src/backend/.venv
+src/__pycache__/
+src/venv/
+src/components/__pycache__/
+src/pages/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -146,6 +150,10 @@ logs/
 *.temp
 *.cache
 .cache/
+temp-*.png
+temp-*.jpg
+temp-*.jpeg
+temp-*.webp
 
 # ==========================================
 # Database Files
