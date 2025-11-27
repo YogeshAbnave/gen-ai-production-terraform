@@ -57,18 +57,27 @@ def get_assignments_from_dynamodb():
 
 def get_image_url(image_name):
     """
-    Generate CloudFront URL for the image.
-    Falls back to S3 direct URL if CloudFront is not configured.
+    Generate image URL using CloudFront or S3 pre-signed URL.
     """
     if not image_name or image_name == "no image created":
         return None
     
     # Use CloudFront if configured
-    if CLOUDFRONT_DOMAIN:
+    if CLOUDFRONT_DOMAIN and CLOUDFRONT_DOMAIN.strip():
         return f"https://{CLOUDFRONT_DOMAIN}/{image_name}"
     
-    # Fallback to S3 direct URL (for development/testing)
-    return f"https://{S3_BUCKET_NAME}.s3.amazonaws.com/{image_name}"
+    # Fallback to S3 pre-signed URL (works with private buckets)
+    try:
+        s3_client = session.client("s3")
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET_NAME, 'Key': image_name},
+            ExpiresIn=3600  # URL valid for 1 hour
+        )
+        return url
+    except Exception as e:
+        logging.error(f"Error generating pre-signed URL: {e}")
+        return None
 
 
 def check_image_exists(image_name):
@@ -217,14 +226,15 @@ if assignment_id_selection and assignment_id_selection != "<Select>":
             assignment_selection = assignment_record
 
 if assignment_selection:
-    # Show image using CloudFront URL
+    # Show image using CloudFront URL or pre-signed S3 URL
     image_name = assignment_selection.get("s3_image_name", "")
     
     if image_name and image_name != "no image created":
         image_url = get_image_url(image_name)
         if image_url:
             try:
-                st.image(image_url, use_container_width=True)
+                # Display image with medium width (600px)
+                st.image(image_url, width=600, caption="Assignment Image")
             except Exception as e:
                 logging.error(f"Error displaying image: {e}")
                 st.info("📷 Image not available")
