@@ -2,7 +2,7 @@
 # Use this when Terraform state is lost or resources exist outside Terraform
 
 param(
-    [string]$Region = "ap-south-1",
+    [string]$Region = "us-east-1",
     [switch]$DryRun
 )
 

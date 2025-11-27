@@ -1,7 +1,7 @@
 # Quick validation test before full load testing
 # Verifies ALB and instances are responding correctly
 
-$ALB_URL = "http://crud-app-alb-263940571.ap-south-1.elb.amazonaws.com"
+$ALB_URL = "http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Quick ALB Validation Test" -ForegroundColor Cyan

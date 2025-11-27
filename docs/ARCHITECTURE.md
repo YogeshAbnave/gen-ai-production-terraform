@@ -16,7 +16,7 @@
                     |                                     |
         +-----------v-----------+           +-----------v-----------+
         |   PUBLIC SUBNET 1     |           |   PUBLIC SUBNET 2     |
-        |   (ap-south-1a)       |           |   (ap-south-1b)       |
+        |   (us-east-1a)       |           |   (us-east-1b)       |
         |   10.0.1.0/24         |           |   10.0.2.0/24         |
         |                       |           |                       |
         |  +----------------+   |           |  +----------------+   |
@@ -33,7 +33,7 @@
         |                                                             |
         +-----------v-----------+           +-----------v-----------+
         |  PRIVATE SUBNET 1     |           |  PRIVATE SUBNET 2     |
-        |   (ap-south-1a)       |           |   (ap-south-1b)       |
+        |   (us-east-1a)       |           |   (us-east-1b)       |
         |   10.0.10.0/24        |           |   10.0.11.0/24        |
         |                       |           |                       |
         |  +----------------+   |           |  +----------------+   |
@@ -129,7 +129,7 @@ resource "aws_internet_gateway" "main" {
 resource "aws_subnet" "public_1" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
-  availability_zone       = "ap-south-1a"
+  availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
 }
 ```
@@ -153,7 +153,7 @@ resource "aws_subnet" "public_1" {
 resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.10.0/24"
-  availability_zone = "ap-south-1a"
+  availability_zone = "us-east-1a"
 }
 ```
 
@@ -368,7 +368,7 @@ resource "aws_security_group" "backend" {
 ```terraform
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id          = aws_vpc.main.id
-  service_name    = "com.amazonaws.ap-south-1.dynamodb"
+  service_name    = "com.amazonaws.us-east-1.dynamodb"
   route_table_ids = [aws_route_table.private.id]
 }
 ```

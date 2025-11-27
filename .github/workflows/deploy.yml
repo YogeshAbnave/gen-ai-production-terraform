@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-south-1
+  AWS_REGION: us-east-1
   APPLICATION_NAME: streamlit-crud-app
   STREAMLIT_PORT: 8501
 
@@ -200,7 +200,7 @@ jobs:
           WorkingDirectory=/var/www/streamlit
           Environment=PATH=/var/www/streamlit/venv/bin
           Environment=MONGO_URI=mongodb://localhost:27017/
-          Environment=AWS_REGION=ap-south-1
+          Environment=AWS_REGION=us-east-1
           Environment=S3_BUCKET_NAME=${{ steps.get-s3-bucket.outputs.bucket_name || 'education-portal-images-b97bac46' }}
           Environment=BEDROCK_TEXT_MODEL_ID=amazon.titan-text-express-v1
           Environment=BEDROCK_IMAGE_MODEL_ID=amazon.titan-image-generator-v1

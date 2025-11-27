@@ -2,7 +2,7 @@
 # Run this script to start load testing
 
 param(
-    [string]$ALB_URL = "http://crud-app-alb-263940571.ap-south-1.elb.amazonaws.com",
+    [string]$ALB_URL = "http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com",
     [int]$Users = 200,
     [int]$SpawnRate = 10,
     [string]$TestType = "balanced"  # balanced, read-heavy, write-heavy

@@ -86,7 +86,7 @@ start reports/baseline-image-test.html
 
 ```powershell
 # Get dashboard URL
-$region = "ap-south-1"
+$region = "us-east-1"
 $dashboard = terraform output -raw cloudwatch_dashboard_name
 echo "https://console.aws.amazon.com/cloudwatch/home?region=$region#dashboards:name=$dashboard"
 ```

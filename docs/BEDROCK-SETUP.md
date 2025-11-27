@@ -14,7 +14,7 @@ This application uses Amazon Bedrock for AI-powered features. By default, it use
 ### Step 1: Enable Model Access in AWS Console
 
 1. Go to the [Amazon Bedrock Console](https://console.aws.amazon.com/bedrock/)
-2. Select your region (ap-south-1 - Mumbai)
+2. Select your region (us-east-1 - Mumbai)
 3. Click on "Model access" in the left navigation
 4. Click "Manage model access" or "Enable specific models"
 5. Select the models you want to use:
@@ -31,7 +31,7 @@ This application uses Amazon Bedrock for AI-powered features. By default, it use
 Check which models are available in your region:
 
 ```bash
-aws bedrock list-foundation-models --region ap-south-1 --query "modelSummaries[].{ModelId:modelId, Name:modelName, Status:modelLifecycle.status}" --output table
+aws bedrock list-foundation-models --region us-east-1 --query "modelSummaries[].{ModelId:modelId, Name:modelName, Status:modelLifecycle.status}" --output table
 ```
 
 ### Step 3: Update Model Configuration (Optional)
@@ -107,7 +107,7 @@ This error occurs when:
 
 **Solution:**
 1. Verify the model ID using `aws bedrock list-foundation-models`
-2. Check if the model is available in ap-south-1 region
+2. Check if the model is available in us-east-1 region
 3. Use a different model from the available list
 
 ### Error: "You must specify a region"
@@ -161,7 +161,7 @@ Test if a model is accessible:
 import boto3
 import json
 
-bedrock = boto3.client('bedrock-runtime', region_name='ap-south-1')
+bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 
 # Test Titan Text
 response = bedrock.invoke_model(

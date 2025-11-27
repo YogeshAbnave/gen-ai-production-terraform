@@ -2,7 +2,7 @@
 # Run this before pushing to GitHub to verify AWS infrastructure exists
 
 param(
-    [string]$Region = "ap-south-1"
+    [string]$Region = "us-east-1"
 )
 
 Write-Host "🔍 Checking AWS Infrastructure..." -ForegroundColor Cyan

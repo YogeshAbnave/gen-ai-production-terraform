@@ -16,7 +16,7 @@ if ($Setup) {
     Push-Location src/backend
     & .\venv\Scripts\Activate.ps1
     $env:DYNAMODB_TABLE = "app-data-table"
-    $env:AWS_REGION = "ap-south-1"
+    $env:AWS_REGION = "us-east-1"
     uvicorn app.main:app --reload --port 8000
     Pop-Location
 } elseif ($Frontend) {

@@ -90,7 +90,7 @@ For detailed architecture diagrams, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 3. Enter your AWS credentials:
    - AWS Access Key ID
    - AWS Secret Access Key
-   - Default region: `ap-south-1`
+   - Default region: `us-east-1`
    - Default output format: `json`
 
 ### Verify Installation
@@ -244,7 +244,7 @@ This will:
 
 Backend uses these environment variables:
 - `DYNAMODB_TABLE`: DynamoDB table name (default: `app-data-table`)
-- `AWS_REGION`: AWS region (default: `ap-south-1`)
+- `AWS_REGION`: AWS region (default: `us-east-1`)
 - `AWS_ACCESS_KEY_ID`: AWS credentials
 - `AWS_SECRET_ACCESS_KEY`: AWS credentials
 
@@ -345,7 +345,7 @@ Run all steps with prompts:
 
 ### AWS Region
 
-This project is configured for **`ap-south-1`** (Mumbai, India).
+This project is configured for **`us-east-1`** (Mumbai, India).
 
 To change region:
 
@@ -535,7 +535,7 @@ terraform apply
 # Wait 2-3 minutes for instances to launch
 aws ec2 describe-instances \
   --filters "Name=tag:aws:autoscaling:groupName,Values=crud-app-asg" \
-  --region ap-south-1
+  --region us-east-1
 ```
 
 #### 3. Permission Denied (publickey)
@@ -595,7 +595,7 @@ aws configure
 Enter:
 - AWS Access Key ID
 - AWS Secret Access Key
-- Default region: `ap-south-1`
+- Default region: `us-east-1`
 - Default output format: `json`
 
 ### Backend Issues
@@ -658,17 +658,17 @@ terraform plan
 
 **Check ALB:**
 ```powershell
-aws elbv2 describe-load-balancers --names crud-app-alb --region ap-south-1
+aws elbv2 describe-load-balancers --names crud-app-alb --region us-east-1
 ```
 
 **Check ASG:**
 ```powershell
-aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names crud-app-asg --region ap-south-1
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names crud-app-asg --region us-east-1
 ```
 
 **Check DynamoDB:**
 ```powershell
-aws dynamodb describe-table --table-name app-data-table --region ap-south-1
+aws dynamodb describe-table --table-name app-data-table --region us-east-1
 ```
 
 **SSH into EC2:**

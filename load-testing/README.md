@@ -28,7 +28,7 @@ cd load-testing
 
 ```powershell
 cd load-testing
-locust -f locustfile.py --host=http://crud-app-alb-263940571.ap-south-1.elb.amazonaws.com
+locust -f locustfile.py --host=http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com
 ```
 
 Then open browser: http://localhost:8089
@@ -313,10 +313,10 @@ Displays real-time metrics:
 ## Your ALB URL
 
 ```
-http://crud-app-alb-263940571.ap-south-1.elb.amazonaws.com
+http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com
 ```
 
 Test it's working:
 ```powershell
-curl http://crud-app-alb-263940571.ap-south-1.elb.amazonaws.com/items
+curl http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com/items
 ```

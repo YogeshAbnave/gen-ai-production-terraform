@@ -247,7 +247,7 @@ pip install locust requests
 ```powershell
 # Open dashboard in browser
 $dashboardName = terraform output -raw cloudwatch_dashboard_name
-echo "https://console.aws.amazon.com/cloudwatch/home?region=ap-south-1#dashboards:name=$dashboardName"
+echo "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=$dashboardName"
 ```
 
 ## 📊 Expected Outcomes

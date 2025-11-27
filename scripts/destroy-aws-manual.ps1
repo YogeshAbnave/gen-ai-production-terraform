@@ -2,7 +2,7 @@
 # Destroys AWS resources when Terraform state is lost
 
 param(
-    [string]$Region = "ap-south-1",
+    [string]$Region = "us-east-1",
     [string]$IGW = "igw-00673a90431da2b9f"
 )
 

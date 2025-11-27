@@ -1,7 +1,7 @@
 # Import Existing AWS Resources into Terraform State
 # Use this when resources exist but aren't in Terraform state
 
-param([string]$Region = "ap-south-1")
+param([string]$Region = "us-east-1")
 
 Write-Host "🔄 Importing Existing AWS Resources" -ForegroundColor Cyan
 Write-Host "====================================" -ForegroundColor Cyan

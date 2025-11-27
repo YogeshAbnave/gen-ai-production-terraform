@@ -6,7 +6,7 @@ param(
     [int]$RefreshInterval = 30,
     
     [Parameter(Mandatory=$false)]
-    [string]$Region = "ap-south-1"
+    [string]$Region = "us-east-1"
 )
 
 Write-Host "========================================" -ForegroundColor Cyan
