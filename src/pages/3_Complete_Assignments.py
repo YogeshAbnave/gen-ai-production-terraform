@@ -204,7 +204,7 @@ if assignment_selection:
     image_name = assignment_selection["s3_image_name"]
     file_name = "temp-answer.png"
     if download_image(image_name, file_name):
-        st.image(Image.open(file_name), width=128)
+        st.image(Image.open(file_name), use_container_width=True)
 
     # Show prompt
     st.write(assignment_selection["prompt"])

@@ -87,7 +87,7 @@ if prompt_option:
         and image_name != "no image created"
         and download_image(image_name, file_name)
     ):
-        st.image(Image.open(file_name), width=128)
+        st.image(Image.open(file_name), use_container_width=True)
     else:
         st.write("Image not found")
 
