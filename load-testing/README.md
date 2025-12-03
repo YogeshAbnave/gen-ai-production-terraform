@@ -28,7 +28,7 @@ cd load-testing
 
 ```powershell
 cd load-testing
-locust -f locustfile.py --host=http://crud-app-alb-263940571.us-east-1.elb.amazonaws.com
+locust -f locustfile.py --host=http://crud-app-alb-915269025.us-east-1.elb.amazonaws.com
 ```
 
 Then open browser: http://localhost:8089

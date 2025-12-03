@@ -75,7 +75,7 @@ locust -f locustfile.py `
 ### Terminal 1: Run Load Test
 ```powershell
 cd terraform-crud/load-testing
-locust -f locustfile.py --host=http://YOUR-ALB-URL --users=300 --spawn-rate=30 --run-time=5m --headless
+locust -f locustfile.py --host=http://crud-app-alb-915269025.us-east-1.elb.amazonaws.com --users=300 --spawn-rate=30 --run-time=5m --headless
 ```
 
 ### Terminal 2: Monitor Scaling
