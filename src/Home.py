@@ -9,7 +9,7 @@ def main():
         page_icon="👋 Hello",
     )
 
-    st.write("# Welcome to your education portal! 👋 Hello CloudAge MongoDB")
+    st.write("# Welcome to your education portal! 👋 Hello AllOps MongoDB")
 
     st.markdown(
         """
